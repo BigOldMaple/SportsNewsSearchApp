@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>News Search</title>
+    <link rel="icon" href="data:," />
+    <!-- Prevents favicon requests -->
+
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder@1.3.3/dist/universal-sentence-encoder.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Tailwind Configuration -->
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#2563eb",
+              secondary: "#475569",
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      .description-container {
+        transition: max-height 0.3s ease-out;
+        overflow: hidden;
+      }
+
+      .description-content {
+        position: relative;
+        padding-bottom: 2rem;
+      }
+
+      .description-fade {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 3rem;
+        background: linear-gradient(
+          to bottom,
+          transparent,
+          var(--bg-color, white)
+        );
+        pointer-events: none;
+      }
+
+      .dark .description-fade {
+        --bg-color: rgb(31, 41, 55);
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .fade-in {
+        animation: fadeIn 0.3s ease-out forwards;
+      }
+
+      /* Search History Dropdown Styles */
+      .search-history-dropdown {
+        opacity: 0;
+        transform: translateY(-10px);
+        transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+      }
+
+      .search-history-dropdown.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .search-history-item {
+        transition: background-color 0.2s ease;
+      }
+
+      .search-history-item:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .dark .search-history-item:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+      }
+    </style>
+  </head>
+
+  <body
+    class="h-full flex flex-col bg-gradient-to-b from-blue-50 to-gray-50 dark:from-gray-900 dark:to-gray-800 transition-colors duration-200"
+  >
+    <!-- Header -->
+    <header
+      class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 transition-colors duration-200"
+    >
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div class="flex items-center justify-between">
+          <!-- Logo and Title -->
+          <div class="flex items-center">
+            <button
+              id="resetSearch"
+              class="flex items-center cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-8 w-8 text-primary dark:text-blue-400 transform transition-transform hover:scale-110"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9.5a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
+                />
+              </svg>
+              <h1 class="ml-3 text-2xl font-bold text-gray-900 dark:text-white">
+                Sports News Search
+              </h1>
+            </button>
+          </div>
+
+          <!-- Dark Mode Toggle -->
+          <button
+            id="darkModeToggle"
+            class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200"
+            aria-label="Toggle dark mode"
+          >
+            <!-- Sun Icon (Dark Mode) -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6 text-gray-600 dark:text-yellow-300 hidden dark:block"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
+              />
+            </svg>
+            <!-- Moon Icon (Light Mode) -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6 text-gray-600 dark:text-yellow-300 block dark:hidden"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Search Section -->
+        <div
+          class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-8 transition-colors duration-200"
+        >
+          <div class="max-w-3xl mx-auto">
+            <div class="flex flex-col md:flex-row gap-4">
+              <!-- Search Input -->
+              <div class="flex-grow relative">
+                <svg
+                  class="absolute left-3 top-3.5 h-5 w-5 text-gray-400 dark:text-gray-500"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                <input
+                  type="text"
+                  id="searchInput"
+                  placeholder="Enter your search query..."
+                  class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary dark:focus:ring-blue-400 focus:border-primary dark:focus:border-blue-400 transition-all duration-300 hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+
+                <!-- Search History Dropdown -->
+                <div
+                  id="searchHistoryDropdown"
+                  class="hidden absolute w-full bg-white dark:bg-gray-700 rounded-lg shadow-lg mt-1 z-10 border border-gray-200 dark:border-gray-600"
+                >
+                  <div class="max-h-60 overflow-y-auto">
+                    <div id="searchHistoryItems"></div>
+                  </div>
+                  <div
+                    class="border-t border-gray-200 dark:border-gray-600 p-2 flex justify-end"
+                  >
+                    <button
+                      id="clearHistory"
+                      class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1"
+                    >
+                      Clear History
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Search Button and Loading Indicator -->
+              <div class="flex items-center relative">
+                <button
+                  id="searchButton"
+                  class="px-6 py-3 bg-primary dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-blue-400 transition-all duration-300 flex items-center justify-center group"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 mr-2 group-hover:scale-110 transition-transform duration-300"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                  Search
+                </button>
+                <div
+                  id="loadingIndicator"
+                  class="hidden absolute left-full ml-4 items-center"
+                >
+                  <div
+                    class="animate-spin rounded-full h-5 w-5 border-2 border-primary dark:border-blue-400 border-t-transparent"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Date Filter Section -->
+        <div class="flex flex-col md:flex-row gap-4 mt-4">
+          <div class="flex-1 flex gap-4">
+            <div class="flex-1">
+              <label
+                for="startDate"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >From Date</label
+              >
+              <input
+                type="date"
+                id="startDate"
+                class="w-full pl-3 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary dark:focus:ring-blue-400 focus:border-primary dark:focus:border-blue-400 transition-all duration-300 hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div class="flex-1">
+              <label
+                for="endDate"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >To Date</label
+              >
+              <input
+                type="date"
+                id="endDate"
+                class="w-full pl-3 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary dark:focus:ring-blue-400 focus:border-primary dark:focus:border-blue-400 transition-all duration-300 hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+          </div>
+          <div class="flex items-end">
+            <button
+              id="clearDates"
+              class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 focus:outline-none transition-colors duration-200"
+            >
+              Clear Dates
+            </button>
+          </div>
+        </div>
+
+        <!-- Results Section -->
+        <div
+          class="bg-white dark:bg-gray-800 rounded-lg shadow-sm mt-8 flex flex-col h-[calc(100vh-24rem)]"
+        >
+          <div id="results" class="flex-1 overflow-y-auto px-6 pb-6 space-y-4">
+          </div>
+
+          <!-- Pagination Controls -->
+          <div
+            id="pagination-controls"
+            class="flex justify-between items-center p-4 border-t border-gray-200 dark:border-gray-700"
+          >
+            <div class="flex space-x-2 items-center">
+              <select
+                id="resultsPerPage"
+                class="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-200"
+              >
+                <option value="5">5 per page</option>
+                <option value="10">10 per page</option>
+                <option value="20">20 per page</option>
+              </select>
+              <span
+                id="resultCount"
+                class="text-gray-600 dark:text-gray-400"
+              ></span>
+            </div>
+            <div class="flex space-x-2">
+              <button
+                id="prevPage"
+                class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span
+                id="pageInfo"
+                class="px-4 py-2 text-gray-600 dark:text-gray-400"
+              ></span>
+              <button
+                id="nextPage"
+                class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer
+      class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-auto transition-colors duration-200"
+    >
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div class="text-center text-gray-500 dark:text-gray-400">
+          <p
+            class="hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-300"
+          >
+            Powered by TensorFlow.js and Universal Sentence Encoder
+          </p>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+
+      // Detect language of given text using regex patterns
+      function detectLanguage(text) {
+        if (!text) return "unknown";
+        const patterns = {
+          english: /^[a-zA-Z0-9\s.,!?'"()-]+$/,
+          spanish: /[áéíóúüñ¿¡]/i,
+          french: /[éèêëàâçîïôûùüÿœæ]/i,
+          german: /[äöüß]/i,
+          russian: /[а-яА-ЯЁё]/, 
+          chinese: /[\u4e00-\u9fff]/, 
+          japanese: /[\u3040-\u30ff\u31f0-\u31ff]/,
+          korean: /[\uac00-\ud7af]/, 
+          italian: /[àèéìòóù]/i,
+          portuguese: /[áàâãéêíóôõúç]/i, 
+          arabic: /[\u0600-\u06FF\u0750-\u077F]/, 
+        };
+        for (const [language, pattern] of Object.entries(patterns)) {
+          if (pattern.test(text)) return language;
+        }
+        return "unknown";
+      }
+
+      // Clean text by converting to lowercase and removing non-alphanumeric characters
+      function cleanText(text) {
+        if (!text) return "";
+        return text
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      // Extract and concatenate article texts for embedding
+      function getArticleText(article) {
+        const titleText = cleanText(article.title);
+        const descriptionText = cleanText(article.description);
+        const contentText = cleanText(article.content);
+        const fullDescriptionText = cleanText(article.full_description);
+        return `${titleText} ${titleText} ${descriptionText} ${contentText} ${fullDescriptionText}`;
+      }
+
+      // Check if an article's date is within the specified date range
+      function isWithinDateRange(articleDate, startDate, endDate) {
+        if (!articleDate) return !startDate && !endDate;
+        const date = new Date(articleDate);
+        if (startDate && date < startDate) return false;
+        if (endDate && date > endDate) return false;
+        return true;
+      }
+
+      // Compute cosine similarity between two vectors
+      function cosineSimilarity(a, b) {
+        const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
+        const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+        const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+        return dotProduct / (normA * normB);
+      }
+
+      /* Search History Management */
+      const searchHistory = {
+        items: JSON.parse(localStorage.getItem("searchHistory") || "[]"),
+        maxSize: 5,
+        // Add a new search query to history and update dropdown
+        add(query) {
+          if (!query.trim()) return;
+          this.items = [query, ...this.items.filter((q) => q !== query)].slice(
+            0,
+            this.maxSize
+          );
+          localStorage.setItem("searchHistory", JSON.stringify(this.items));
+          this.updateDropdown();
+        },
+        // Clear search history
+        clear() {
+          this.items = [];
+          localStorage.removeItem("searchHistory");
+          this.updateDropdown();
+        },
+        // Update the dropdown list based on current search input
+        updateDropdown() {
+          const historyItems = document.getElementById("searchHistoryItems");
+          const searchInput = document.getElementById("searchInput");
+          const currentQuery = searchInput.value.toLowerCase();
+          if (!historyItems) return;
+          const filteredItems = this.items.filter((item) =>
+            item.toLowerCase().includes(currentQuery)
+          );
+          if (filteredItems.length === 0) {
+            historyItems.innerHTML = `
+              <div class="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">
+                No matching searches
+              </div>
+            `;
+            return;
+          }
+          historyItems.innerHTML = filteredItems
+            .map(
+              (item) => `
+            <button class="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-sm flex items-center group">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              ${item}
+            </button>
+          `
+            )
+            .join("");
+          historyItems.querySelectorAll("button").forEach((button, index) => {
+            button.addEventListener("click", () => {
+              searchInput.value = filteredItems[index];
+              hideSearchHistoryDropdown();
+              searchNews();
+            });
+          });
+        },
+      };
+
+      // Display search history dropdown
+      function showSearchHistoryDropdown() {
+        const dropdown = document.getElementById("searchHistoryDropdown");
+        if (dropdown) dropdown.classList.remove("hidden");
+        searchHistory.updateDropdown();
+      }
+
+      // Hide search history dropdown
+      function hideSearchHistoryDropdown() {
+        const dropdown = document.getElementById("searchHistoryDropdown");
+        if (dropdown) dropdown.classList.add("hidden");
+      }
+
+      /* Pagination Variables */
+      let currentPage = 1;
+      let currentResults = [];
+      let resultsPerPage = 5;
+
+      /* Application State Variables */
+      let model;
+      let newsData = [];
+      let isDataLoaded = false;
+
+      /* Dark Mode Initialization */
+      const darkModeToggle = document.getElementById("darkModeToggle");
+      // Set dark mode based on previous setting or system preference
+      if (
+        localStorage.getItem("darkMode") === "true" ||
+        (localStorage.getItem("darkMode") === null &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches)
+      ) {
+        document.documentElement.classList.add("dark");
+      }
+      darkModeToggle.addEventListener("click", () => {
+        document.documentElement.classList.toggle("dark");
+        localStorage.setItem(
+          "darkMode",
+          document.documentElement.classList.contains("dark")
+        );
+      });
+
+      /* Pagination and Result Display Functions */
+      // Update pagination based on results length and current page
+      function updatePagination(results) {
+        currentResults = results;
+        const totalPages = Math.ceil(results.length / resultsPerPage);
+        const startIndex = (currentPage - 1) * resultsPerPage;
+        const endIndex = startIndex + resultsPerPage;
+        const currentPageResults = results.slice(startIndex, endIndex);
+
+        // Update UI controls for pagination status
+        document.getElementById("prevPage").disabled = currentPage === 1;
+        document.getElementById("nextPage").disabled =
+          currentPage === totalPages;
+        document.getElementById(
+          "pageInfo"
+        ).textContent = `Page ${currentPage} of ${totalPages}`;
+        document.getElementById(
+          "resultCount"
+        ).textContent = `${results.length} results found`;
+
+        return currentPageResults;
+      }
+
+      // Render search results for the current page
+      function displayResults(results) {
+        const resultsDiv = document.getElementById("results");
+        if (results.length === 0) {
+          resultsDiv.innerHTML = `
+            <div class="p-6 text-center text-gray-500 dark:text-gray-400">
+              No matching results found. Try adjusting your search terms or date range.
+            </div>
+          `;
+          document.getElementById("pagination-controls").style.display = "none";
+          return;
+        }
+
+        document.getElementById("pagination-controls").style.display = "flex";
+        const paginatedResults = updatePagination(results);
+
+        resultsDiv.innerHTML = paginatedResults
+          .map(
+            (result, index) => `
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow duration-200">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              ${result.article.title || "No Title"}
+            </h3>
+            <div id="description-${index}" class="description-container" style="max-height: 100px;">
+              <div class="description-content">
+                ${
+                  result.article.full_description
+                    ? `<p class="text-gray-600 dark:text-gray-300 mb-4">${result.article.full_description}</p>`
+                    : ""
+                }
+                ${
+                  result.article.description
+                    ? `<p class="text-gray-600 dark:text-gray-300 mb-4">${result.article.description}</p>`
+                    : ""
+                }
+                ${
+                  result.article.content
+                    ? `<p class="text-gray-600 dark:text-gray-300 mb-4">${result.article.content}</p>`
+                    : ""
+                }
+                <div class="description-fade"></div>
+              </div>
+            </div>
+            <button 
+              onclick="toggleDescription(this, 'description-${index}')"
+              class="mt-2 text-primary dark:text-blue-400 hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-blue-400"
+              aria-expanded="false"
+              aria-controls="description-${index}">
+              Show More
+            </button>
+            ${
+              result.article.link
+                ? `<a href="${result.article.link}" target="_blank" rel="noopener noreferrer" class="text-primary dark:text-blue-400 hover:underline mt-4 block">Read more →</a>`
+                : ""
+            }
+            <div class="flex items-center justify-between mt-4">
+              <div class="bg-blue-100 dark:bg-blue-900 text-primary dark:text-blue-300 px-3 py-1 rounded-full text-sm">
+                Score: ${(result.score * 100).toFixed(1)}%
+              </div>
+              ${
+                result.article.pubDate
+                  ? `<div class="text-gray-500 dark:text-gray-400 text-sm">${new Date(
+                      result.article.pubDate
+                    ).toLocaleDateString()}</div>`
+                  : ""
+              }
+            </div>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      // Show loading spinner and disable search button
+      function showLoading() {
+        const loadingIndicator = document.getElementById("loadingIndicator");
+        loadingIndicator.classList.remove("hidden");
+        loadingIndicator.classList.add("flex");
+        document.getElementById("searchButton").disabled = true;
+      }
+
+      // Hide loading spinner and enable search button
+      function hideLoading() {
+        const loadingIndicator = document.getElementById("loadingIndicator");
+        loadingIndicator.classList.add("hidden");
+        loadingIndicator.classList.remove("flex");
+        document.getElementById("searchButton").disabled = false;
+      }
+
+      /* Embedding and Initialization Functions */
+      // Process embeddings for news articles and store in IndexedDB
+      async function processEmbeddings() {
+        const batchSize = 100;
+        const maxConcurrentBatches = 5;
+        const maxChunkSize = 5000;
+        let currentChunk = [];
+        let chunkIndex = 0;
+
+        // Open or create IndexedDB for storing embeddings
+        const db = await new Promise((resolve, reject) => {
+          const openRequest = indexedDB.open("newsEmbeddings", 1);
+          openRequest.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            const store = db.createObjectStore("embeddings", { keyPath: "id" });
+            store.createIndex("timestamp", "timestamp", { unique: false });
+          };
+          openRequest.onsuccess = (event) => resolve(event.target.result);
+          openRequest.onerror = () => reject(openRequest.error);
+        });
+
+        // Process newsData in batches concurrently
+        for (
+          let i = 0;
+          i < newsData.length;
+          i += batchSize * maxConcurrentBatches
+        ) {
+          const batchPromises = [];
+
+          for (let j = 0; j < maxConcurrentBatches; j++) {
+            const startIdx = i + j * batchSize;
+            if (startIdx >= newsData.length) break;
+            const batch = newsData.slice(startIdx, startIdx + batchSize);
+            const batchPromise = (async () => {
+              try {
+                const texts = batch.map((article) => getArticleText(article));
+                const batchEmbeddings = await model.embed(texts);
+                const embedArray = await batchEmbeddings.array();
+                batchEmbeddings.dispose();
+                return embedArray;
+              } catch (error) {
+                console.error(`Error processing batch at ${startIdx}:`, error);
+                return null;
+              }
+            })();
+            batchPromises.push(batchPromise);
+          }
+
+          try {
+            const batchResults = await Promise.all(batchPromises);
+            batchResults.filter(Boolean).forEach((embedArray) => {
+              currentChunk.push(...embedArray);
+            });
+
+            // Store chunks of embeddings into IndexedDB if they reach a certain size
+            if (currentChunk.length >= maxChunkSize) {
+              const transaction = db.transaction(["embeddings"], "readwrite");
+              const store = transaction.objectStore("embeddings");
+              await store.put({
+                id: chunkIndex,
+                embeddings: currentChunk,
+                timestamp: Date.now(),
+              });
+              currentChunk = [];
+              chunkIndex++;
+            }
+            console.log(
+              `Processed up to article ${Math.min(
+                i + batchSize * maxConcurrentBatches,
+                newsData.length
+              )}/${newsData.length}`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          } catch (error) {
+            console.error(`Error processing batch group at ${i}:`, error);
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        }
+
+        // Save any remaining embeddings
+        if (currentChunk.length > 0) {
+          const transaction = db.transaction(["embeddings"], "readwrite");
+          const store = transaction.objectStore("embeddings");
+          await new Promise((resolve, reject) => {
+            const request = store.put({
+              id: chunkIndex,
+              embeddings: currentChunk,
+              timestamp: Date.now(),
+            });
+            request.onsuccess = () => resolve();
+            request.onerror = (e) => reject(e.target.error);
+          });
+        }
+      }
+
+      async function init() {
+        try {
+          document.getElementById("loadingIndicator").style.display = "block";
+          model = await use.load();
+
+          const response = await fetch("data/allnews.json");
+          const text = await response.text().then((t) => t.trim());
+          if (!text.startsWith("[")) throw new Error("Invalid JSON format");
+          newsData = JSON.parse(text);
+          console.log("Loaded news data length:", newsData.length);
+
+          if (!newsData.length) throw new Error("Empty news data");
+
+          // Open IndexedDB to check for cached embeddings
+          const db = await new Promise((resolve, reject) => {
+            const request = indexedDB.open("newsEmbeddings", 1);
+            request.onupgradeneeded = (event) => {
+              const db = event.target.result;
+              const store = db.createObjectStore("embeddings", {
+                keyPath: "id",
+              });
+              store.createIndex("timestamp", "timestamp", { unique: false });
+            };
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = () => reject(request.error);
+          });
+
+          const transaction = db.transaction(["embeddings"], "readonly");
+          const store = transaction.objectStore("embeddings");
+          // Attempt to retrieve cached embeddings from IndexedDB
+          const cachedEmbeddings = await new Promise((resolve) => {
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => resolve(null);
+          });
+
+          let needsProcessing = true;
+          // Check if cached embeddings match news data length
+          if (cachedEmbeddings && cachedEmbeddings.length > 0) {
+            const totalEmbeddings = cachedEmbeddings.reduce(
+              (sum, chunk) => sum + chunk.embeddings.length,
+              0
+            );
+            if (totalEmbeddings === newsData.length) {
+              console.log("Using cached embeddings");
+              needsProcessing = false;
+            } else {
+              console.log("Cached embeddings size mismatch, reprocessing");
+            }
+          }
+
+          // Process embeddings if needed
+          if (needsProcessing) {
+            console.log("Processing new embeddings");
+            await processEmbeddings();
+          }
+
+          isDataLoaded = true;
+          document.getElementById("loadingIndicator").style.display = "none";
+        } catch (error) {
+          console.error("Initialization error:", error);
+          document.getElementById("loadingIndicator").textContent =
+            "Error loading data";
+        }
+      }
+
+      /* Search and Scoring Functions */
+
+      // Perform a search based on user query and update results
+      async function searchNews() {
+        if (!isDataLoaded) {
+          alert("Please wait for data to load");
+          return;
+        }
+        const query = document.getElementById("searchInput").value;
+        if (!query) return;
+
+        searchHistory.add(query);
+        hideSearchHistoryDropdown();
+        showLoading();
+
+        try {
+          const cleanedQuery = cleanText(query);
+          // Get embedding for the user's query
+          const queryEmbedding = await model.embed([cleanedQuery]);
+          const queryVector = await queryEmbedding.array();
+
+          // Get date range filters from UI
+          const startDateStr = document.getElementById("startDate").value;
+          const endDateStr = document.getElementById("endDate").value;
+          const startDate = startDateStr ? new Date(startDateStr) : null;
+          const endDate = endDateStr
+            ? new Date(endDateStr + "T23:59:59")
+            : null;
+
+          // Open IndexedDB to retrieve stored embeddings
+          const db = await new Promise((resolve, reject) => {
+            const request = indexedDB.open("newsEmbeddings", 1);
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = () => reject(request.error);
+          });
+
+          const transaction = db.transaction(["embeddings"], "readonly");
+          const store = transaction.objectStore("embeddings");
+          // Retrieve all stored embedding chunks
+          const allResults = await new Promise((resolve, reject) => {
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+
+          let allSimilarities = [];
+          // Iterate through each chunk and calculate similarity scores
+          allResults.forEach((chunk, chunkIndex) => {
+            chunk.embeddings.forEach((embedding, idx) => {
+              const articleIndex = idx + chunkIndex * chunk.embeddings.length;
+              const article = newsData[articleIndex];
+
+              // Apply date filtering based on user selection
+              if (startDate || endDate) {
+                const articleDate = article.pubDate
+                  ? new Date(article.pubDate)
+                  : null;
+                if (!articleDate) return;
+                if (startDate && articleDate < startDate) return;
+                if (endDate && articleDate > endDate) return;
+              }
+
+              // Compute cosine similarity and final score
+              const similarity = cosineSimilarity(queryVector[0], embedding);
+              const score = calculateFinalScore(
+                similarity,
+                article,
+                cleanedQuery
+              );
+              allSimilarities.push({ score, index: articleIndex, article });
+            });
+          });
+
+          // Filter, sort, normalize, and slice the top results
+          const results = allSimilarities
+            .filter((result) => result.score > 0.3)
+            .sort((a, b) => b.score - a.score)
+            .map((result) => {
+              const normalizedScore = Math.min(Math.max(result.score, 0), 1);
+              console.log(`Score for "${result.article.title}":`, {
+                originalScore: result.score,
+                normalizedScore,
+                percentage: (normalizedScore * 100).toFixed(1),
+              });
+              return { article: result.article, score: normalizedScore };
+            })
+            .slice(0, 50);
+
+          currentPage = 1;
+          displayResults(results);
+          queryEmbedding.dispose();
+        } catch (error) {
+          console.error("Search error:", error);
+          document.getElementById("results").innerHTML = `
+            <div class="p-6 text-center text-red-500">
+              An error occurred during search. Please try again.
+            </div>
+          `;
+        } finally {
+          hideLoading();
+        }
+      }
+
+      // Calculate how much overlap there is between query words and title words
+      function calculateOverlapRatio(query, title) {
+        const queryWords = new Set(cleanText(query).split(" "));
+        const titleWords = new Set(cleanText(title).split(" "));
+        const intersection = new Set(
+          [...queryWords].filter((word) => titleWords.has(word))
+        );
+        return {
+          queryRatio: intersection.size / queryWords.size,
+          titleRatio: intersection.size / titleWords.size,
+        };
+      }
+
+      // Check if an article title matches the query exactly
+      function isExactMatch(query, article) {
+        const cleanQuery = cleanText(query);
+        const cleanTitle = cleanText(article.title || "");
+        const queryWords = cleanQuery.split(" ");
+        const titleWords = cleanTitle.split(" ");
+        if (queryWords.length === 1) {
+          return cleanTitle === cleanQuery;
+        }
+        const { queryRatio, titleRatio } = calculateOverlapRatio(
+          cleanQuery,
+          cleanTitle
+        );
+        if (queryRatio === 1 && titleRatio >= 0.5) {
+          const queryPhrase = queryWords.join(" ");
+          return cleanTitle.includes(queryPhrase);
+        }
+        return false;
+      }
+
+      // Enhance scoring based on context relevance of the article to the query
+      function calculateContextScore(query, article) {
+        let score = 0;
+        if (
+          article.title &&
+          article.title.toLowerCase().includes(query.toLowerCase())
+        ) {
+          score += 0.4;
+        }
+        if (
+          article.description &&
+          article.description.toLowerCase().includes(query.toLowerCase())
+        ) {
+          score += 0.2;
+        }
+
+        const queryWords = query.toLowerCase().split(/\s+/);
+        const titleWords = (article.title || "").toLowerCase();
+        let allWordsInOrder = true;
+        let lastIndex = -1;
+        for (const word of queryWords) {
+          const index = titleWords.indexOf(word, lastIndex + 1);
+          if (index === -1 || index <= lastIndex) {
+            allWordsInOrder = false;
+            break;
+          }
+          lastIndex = index;
+        }
+        if (allWordsInOrder) score += 0.3;
+        return score;
+      }
+
+      // Calculate final relevance score for an article based on multiple factors
+      function calculateFinalScore(similarity, article, query) {
+        if (isExactMatch(query, article)) {
+          const { queryRatio, titleRatio } = calculateOverlapRatio(
+            query,
+            article.title
+          );
+          if (queryRatio === 1 && titleRatio >= 0.5) {
+            return 1.0;
+          }
+        }
+        let score = similarity * 0.7;
+        let totalBoosts = 1.0;
+        const { queryRatio } = calculateOverlapRatio(query, article.title);
+        const queryLanguage = detectLanguage(query);
+        const articleLanguage = detectLanguage(article.title);
+        if (queryLanguage === articleLanguage) {
+          totalBoosts += 0.15;
+        }
+        score += queryRatio * 0.2;
+        const contextScore = calculateContextScore(query, article);
+        score += contextScore * 0.15;
+        if (article.pubDate) {
+          const articleDate = new Date(article.pubDate);
+          const now = new Date();
+          const daysDiff = (now - articleDate) / (1000 * 60 * 60 * 24);
+          if (daysDiff < 7) {
+            totalBoosts += 0.05;
+          }
+        }
+        score = score * totalBoosts;
+        return Math.min(Math.max(score, 0), 0.9);
+      }
+
+      /* Event Listeners and Initialization */
+
+      // Setup event listeners after DOM is loaded
+      document.addEventListener("DOMContentLoaded", function () {
+        const startDateInput = document.getElementById("startDate");
+        const endDateInput = document.getElementById("endDate");
+        const clearDatesBtn = document.getElementById("clearDates");
+
+        // Update date constraints for date inputs
+        startDateInput.addEventListener("change", function () {
+          endDateInput.min = this.value;
+        });
+        endDateInput.addEventListener("change", function () {
+          startDateInput.max = this.value;
+        });
+        // Clear date filters and refresh search if necessary
+        clearDatesBtn.addEventListener("click", function () {
+          startDateInput.value = "";
+          endDateInput.value = "";
+          startDateInput.max = "";
+          endDateInput.min = "";
+          if (document.getElementById("searchInput").value) {
+            searchNews();
+          }
+        });
+
+        // Pagination event listeners
+        document.getElementById("prevPage").addEventListener("click", () => {
+          if (currentPage > 1) {
+            currentPage--;
+            displayResults(currentResults);
+          }
+        });
+        document.getElementById("nextPage").addEventListener("click", () => {
+          const totalPages = Math.ceil(currentResults.length / resultsPerPage);
+          if (currentPage < totalPages) {
+            currentPage++;
+            displayResults(currentResults);
+          }
+        });
+        document
+          .getElementById("resultsPerPage")
+          .addEventListener("change", (e) => {
+            resultsPerPage = parseInt(e.target.value);
+            currentPage = 1;
+            displayResults(currentResults);
+          });
+        document.getElementById("pagination-controls").style.display = "none";
+
+        // Setup search history related event listeners
+        const searchInput = document.getElementById("searchInput");
+        const dropdown = document.getElementById("searchHistoryDropdown");
+        const clearHistoryBtn = document.getElementById("clearHistory");
+        if (searchInput && dropdown) {
+          searchInput.addEventListener("focus", showSearchHistoryDropdown);
+          searchInput.addEventListener("input", () =>
+            searchHistory.updateDropdown()
+          );
+          document.addEventListener("click", (e) => {
+            if (
+              !searchInput.contains(e.target) &&
+              !dropdown.contains(e.target)
+            ) {
+              hideSearchHistoryDropdown();
+            }
+          });
+        }
+        if (clearHistoryBtn) {
+          clearHistoryBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            searchHistory.clear();
+          });
+        }
+      });
+
+      // Toggle expansion of article description text
+      function toggleDescription(button, containerId) {
+        const container = document.getElementById(containerId);
+        const content = container.querySelector(".description-content");
+        const fadeElement = container.querySelector(".description-fade");
+        if (container.classList.contains("expanded")) {
+          container.style.maxHeight = "100px";
+          container.classList.remove("expanded");
+          fadeElement.style.display = "block";
+          button.textContent = "Show More";
+          button.setAttribute("aria-expanded", "false");
+        } else {
+          container.style.maxHeight = content.scrollHeight + "px";
+          container.classList.add("expanded");
+          fadeElement.style.display = "none";
+          button.textContent = "Show Less";
+          button.setAttribute("aria-expanded", "true");
+        }
+      }
+
+      // Attach event listeners for search actions and reset
+      document
+        .getElementById("searchButton")
+        .addEventListener("click", searchNews);
+      document
+        .getElementById("searchInput")
+        .addEventListener("keypress", (e) => {
+          if (e.key === "Enter") searchNews();
+        });
+      document.getElementById("resetSearch").addEventListener("click", () => {
+        const searchInput = document.getElementById("searchInput");
+        const resultsDiv = document.getElementById("results");
+        resultsDiv.innerHTML = "";
+        searchInput.value = "";
+        searchInput.focus();
+        document.getElementById("pagination-controls").style.display = "none";
+      });
+
+      init();
+    </script>
+  </body>
+</html>
